@@ -77,7 +77,9 @@ async fn main() -> Result<()> {
         .context("Failed to drop group privileges")?;
 
     // Start forwarding incoming connections
-    proxy.run(opts.target).await?;
+    if let Err(err) = proxy.run(opts.target).await{ 
+        eprintln!("Failed to run Proxy; err = {:?}", err);
+    }
 
     return Ok(());
 }

@@ -13,29 +13,34 @@ impl super::Proxy for Proxy {
     async fn listen(bind: SocketAddr) -> Result<Self> {
         let socket = TcpListener::bind(bind).await
             .with_context(|| format!("Failed to bind to TCP socket: {}", bind))?;
-
         return Ok(Self {
             socket
         })
     }
 
-    async fn run(mut self: Box<Self>, target: SocketAddr) -> Result<()> {
+    async fn run(mut self: Box<Self>, target: SocketAddr) -> Result<()> {        
         loop {
-            let result: Result<()> = (|| async {
-                let (mut client, _) = self.socket.accept().await
-                    .context("Failed to accept connection")?;
+            let (mut client, _) = self.socket.accept().await?;
 
-                let mut remote = TcpStream::connect(target).await
-                    .with_context(|| format!("Failed to connect to target: {}", target))?;
+            tokio::spawn(async move {
+                // In a loop, read data from the socket and write the data back.
+                loop {
+                    let mut remote = match TcpStream::connect(target).await {
+                        Ok(n) => n,
+                        Err(e) => {
+                            eprintln!("Failed to connect to target; err = {:?}", e);
+                            return;
+                        }
+                    };
 
-                tokio::io::copy_bidirectional(&mut client, &mut remote).await?;
+                    if let Err(e) = tokio::io::copy_bidirectional(&mut client, &mut remote).await{
+                        eprintln!("failed to copy from/to proxy; err = {:?}", e);
+                        return;
+                    }
 
-                return Ok(());
-            })().await;
-
-            if let Err(err) = result {
-                eprintln!("Error: {:?}", err);
-            }
+                    return;
+                }
+            });
         }
     }
 }
